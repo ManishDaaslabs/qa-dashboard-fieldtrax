@@ -1,0 +1,13 @@
+name: Keep Render Service Warm
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping dashboard
+        run: curl -sS -o /dev/null -w "HTTP %{http_code}\n" https://qa-dashboard-fieldtrax.onrender.com/ || true
