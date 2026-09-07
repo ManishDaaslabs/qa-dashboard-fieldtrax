@@ -56,7 +56,7 @@ def load_all_test_data():
             
             # Load workbook
             try:
-                wb = load_workbook(filepath)
+                wb = load_workbook(filepath, read_only=True, data_only=True)
                 if sheet_name in wb.sheetnames:
                     ws = wb[sheet_name]
                 else:
@@ -71,7 +71,7 @@ def load_all_test_data():
             
             # Get headers
             headers = {}
-            for col_idx, cell in enumerate(ws[1]):
+            for col_idx, cell in enumerate(next(ws.iter_rows(min_row=1, max_row=1))):
                 if cell.value:
                     headers[cell.value] = col_idx
             
@@ -158,6 +158,7 @@ def load_all_test_data():
             files_loaded += 1
             
             print(f"  ✅ {total_executed} tests: {pass_count} Pass, {fail_count} Fail, {not_executed} Not Executed ({pass_rate:.1f}%)")
+            wb.close()
         
         except Exception as e:
             print(f"  ❌ Error: {str(e)}")
