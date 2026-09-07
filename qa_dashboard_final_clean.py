@@ -9,20 +9,101 @@ import os
 from datetime import datetime
 import json
 import glob
+import re
 
 app = Flask(__name__)
 DASHBOARD_DATA = {}
 
+def normalize_severity(value):
+    """Map many different severity spellings to Critical/High/Medium/Low"""
+    if value is None:
+        return None
+    text = str(value).lower()
+    if 'critical' in text:
+        return 'Critical'
+    if 'high' in text or 'major' in text:
+        return 'High'
+    if 'medium' in text or 'moderate' in text:
+        return 'Medium'
+    if 'low' in text or 'minor' in text:
+        return 'Low'
+    return None
+
+def normalize_priority(value):
+    """Map priority values like 'P1', '1', 'Priority P2' to P1/P2/P3"""
+    if value is None:
+        return None
+    match = re.search(r'P?\s*([0-3])', str(value), re.IGNORECASE)
+    if match:
+        return 'P' + match.group(1)
+    return None
+
+def blank_bug_counts():
+    return {
+        'total': 0,
+        'severity': {'Critical': 0, 'High': 0, 'Medium': 0, 'Low': 0},
+        'priority': {'P1': 0, 'P2': 0, 'P3': 0}
+    }
+
+def parse_bug_sheet(ws):
+    """Parse a defects/bugs worksheet. Handles both normal column tables
+    (Severity/Priority as headers) and the 'card style' layout used by
+    one of the reports, where each bug is a small block of rows starting
+    with a BUG-## / DEF-## id."""
+    result = blank_bug_counts()
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return result
+
+    header = [str(c).strip().lower() if c else '' for c in rows[0]]
+
+    if 'severity' in header:
+        sev_idx = header.index('severity')
+        pri_idx = header.index('priority') if 'priority' in header else None
+        id_idx = None
+        for candidate in ('bug id', 'defect id'):
+            if candidate in header:
+                id_idx = header.index(candidate)
+                break
+
+        for row in rows[1:]:
+            if not any(row):
+                continue
+            if id_idx is not None and (id_idx >= len(row) or not row[id_idx]):
+                continue
+            sev = normalize_severity(row[sev_idx]) if sev_idx < len(row) else None
+            pri = normalize_priority(row[pri_idx]) if pri_idx is not None and pri_idx < len(row) else None
+            result['total'] += 1
+            if sev in result['severity']:
+                result['severity'][sev] += 1
+            if pri in result['priority']:
+                result['priority'][pri] += 1
+    else:
+        for i, row in enumerate(rows):
+            first = row[0] if row else None
+            if first and isinstance(first, str) and re.match(r'^(BUG|DEF)[-_]?\d+', first.strip(), re.IGNORECASE):
+                next_row = rows[i + 1] if i + 1 < len(rows) else None
+                sev = normalize_severity(next_row[0]) if next_row else None
+                pri = normalize_priority(next_row[1]) if next_row and len(next_row) > 1 else None
+                result['total'] += 1
+                if sev in result['severity']:
+                    result['severity'][sev] += 1
+                if pri in result['priority']:
+                    result['priority'][pri] += 1
+
+    return result
+
 def load_all_test_data():
     """Load ALL Excel files using openpyxl only"""
     global DASHBOARD_DATA
-    
+
     features = {}
     total_pass = 0
     total_fail = 0
     total_not_executed = 0
     total_tests = 0
     files_loaded = 0
+    bug_summary = blank_bug_counts()
     
     # Find all Excel files
     excel_files = sorted(glob.glob('*.xlsx') + glob.glob('*.xls'))
@@ -141,6 +222,15 @@ def load_all_test_data():
             else:
                 risk = 'Low'
             
+            # Look for a defects/bugs sheet in the same workbook
+            sheet_lookup = {name.lower(): name for name in wb.sheetnames}
+            bug_ws = None
+            for candidate in ('defects', 'bugs'):
+                if candidate in sheet_lookup:
+                    bug_ws = wb[sheet_lookup[candidate]]
+                    break
+            bugs = parse_bug_sheet(bug_ws) if bug_ws is not None else blank_bug_counts()
+
             # Add to features
             features[feature_display] = {
                 'total': total_executed,
@@ -148,16 +238,25 @@ def load_all_test_data():
                 'failed': fail_count,
                 'not_executed': not_executed,
                 'pass_rate': round(pass_rate, 1),
-                'risk': risk
+                'risk': risk,
+                'bugs': bugs
             }
-            
+
             total_pass += pass_count
             total_fail += fail_count
             total_not_executed += not_executed
             total_tests += total_executed
             files_loaded += 1
-            
+
+            bug_summary['total'] += bugs['total']
+            for sev, count in bugs['severity'].items():
+                bug_summary['severity'][sev] += count
+            for pri, count in bugs['priority'].items():
+                bug_summary['priority'][pri] += count
+
             print(f"  ✅ {total_executed} tests: {pass_count} Pass, {fail_count} Fail, {not_executed} Not Executed ({pass_rate:.1f}%)")
+            if bugs['total']:
+                print(f"     🐞 {bugs['total']} bugs: {bugs['severity']}")
             wb.close()
         
         except Exception as e:
@@ -179,6 +278,7 @@ def load_all_test_data():
             'files_loaded': files_loaded
         },
         'features': dict(sorted(features.items())),
+        'bug_summary': bug_summary,
     }
 
 # Load data on startup
@@ -227,6 +327,20 @@ HTML_TEMPLATE = '''
         .risk-critical { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
         .risk-high { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
         .risk-low { background: rgba(16, 185, 129, 0.2); color: #86efac; }
+        .bug-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .bug-card { background: rgba(31, 41, 55, 0.8); border: 1px solid rgba(75, 85, 99, 0.3); border-radius: 12px; padding: 18px; border-left: 4px solid; }
+        .bug-card-label { font-size: 12px; color: #9ca3af; text-transform: uppercase; margin-bottom: 8px; font-weight: 600; }
+        .bug-card-value { font-size: 26px; font-weight: 700; }
+        .bug-critical { border-left-color: #ef4444; }
+        .bug-critical .bug-card-value { color: #fca5a5; }
+        .bug-high { border-left-color: #f59e0b; }
+        .bug-high .bug-card-value { color: #fcd34d; }
+        .bug-medium { border-left-color: #60a5fa; }
+        .bug-medium .bug-card-value { color: #93c5fd; }
+        .bug-low { border-left-color: #10b981; }
+        .bug-low .bug-card-value { color: #86efac; }
+        .bug-count-badge { display: inline-block; min-width: 28px; padding: 3px 10px; border-radius: 4px; font-size: 13px; font-weight: 600; }
+        .subsection-title { font-size: 15px; font-weight: 600; color: #9ca3af; margin: 20px 0 12px; text-transform: uppercase; }
         .footer { text-align: right; color: #6b7280; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(75, 85, 99, 0.2); }
     </style>
 </head>
@@ -254,7 +368,30 @@ HTML_TEMPLATE = '''
             </thead>
             <tbody id="featuresBody"></tbody>
         </table>
-        
+
+        <h2 class="section-title">🐞 Bug Classification</h2>
+
+        <div class="subsection-title">By Severity</div>
+        <div class="bug-grid" id="bugSeverityGrid"></div>
+
+        <div class="subsection-title">By Priority</div>
+        <div class="bug-grid" id="bugPriorityGrid"></div>
+
+        <div class="subsection-title">By Feature</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Feature</th>
+                    <th style="text-align: center;">Total Bugs</th>
+                    <th style="text-align: center;">Critical</th>
+                    <th style="text-align: center;">High</th>
+                    <th style="text-align: center;">Medium</th>
+                    <th style="text-align: center;">Low</th>
+                </tr>
+            </thead>
+            <tbody id="bugsByFeatureBody"></tbody>
+        </table>
+
         <div class="footer" id="timestamp"></div>
     </div>
     
@@ -309,8 +446,72 @@ HTML_TEMPLATE = '''
         `;
         
         document.getElementById('featuresBody').innerHTML = tableHtml;
-        document.getElementById('timestamp').textContent = 
-            `Updated: ${summary.last_updated} | Files: ${summary.files_loaded}/10 | Tests: ${summary.total_tests}`;
+
+        // ---- Bug Classification ----
+        const bugSummary = data.bug_summary || { total: 0, severity: {}, priority: {} };
+        const sevOrder = ['Critical', 'High', 'Medium', 'Low'];
+        const sevClass = { Critical: 'bug-critical', High: 'bug-high', Medium: 'bug-medium', Low: 'bug-low' };
+
+        let sevHtml = '';
+        sevOrder.forEach(sev => {
+            const count = (bugSummary.severity && bugSummary.severity[sev]) || 0;
+            sevHtml += `
+                <div class="bug-card ${sevClass[sev]}">
+                    <div class="bug-card-label">${sev}</div>
+                    <div class="bug-card-value">${count}</div>
+                </div>
+            `;
+        });
+        sevHtml += `
+            <div class="bug-card" style="border-left-color:#9ca3af;">
+                <div class="bug-card-label">Total Bugs</div>
+                <div class="bug-card-value" style="color:#e5e7eb;">${bugSummary.total || 0}</div>
+            </div>
+        `;
+        document.getElementById('bugSeverityGrid').innerHTML = sevHtml;
+
+        const priOrder = ['P1', 'P2', 'P3'];
+        let priHtml = '';
+        priOrder.forEach(pri => {
+            const count = (bugSummary.priority && bugSummary.priority[pri]) || 0;
+            priHtml += `
+                <div class="bug-card bug-high" style="border-left-color:#818cf8;">
+                    <div class="bug-card-label">${pri}</div>
+                    <div class="bug-card-value" style="color:#a5b4fc;">${count}</div>
+                </div>
+            `;
+        });
+        document.getElementById('bugPriorityGrid').innerHTML = priHtml;
+
+        let bugsFeatureHtml = '';
+        Object.entries(data.features).forEach(([name, stats]) => {
+            const b = stats.bugs || { total: 0, severity: {} };
+            const s = b.severity || {};
+            bugsFeatureHtml += `
+                <tr>
+                    <td><strong>${name}</strong></td>
+                    <td style="text-align: center;"><strong>${b.total || 0}</strong></td>
+                    <td style="text-align: center;">${(s.Critical || 0) ? `<span class="bug-count-badge bug-critical" style="background:rgba(239,68,68,0.2); color:#fca5a5;">${s.Critical}</span>` : '0'}</td>
+                    <td style="text-align: center;">${(s.High || 0) ? `<span class="bug-count-badge bug-high" style="background:rgba(245,158,11,0.2); color:#fcd34d;">${s.High}</span>` : '0'}</td>
+                    <td style="text-align: center;">${(s.Medium || 0) ? `<span class="bug-count-badge bug-medium" style="background:rgba(96,165,250,0.2); color:#93c5fd;">${s.Medium}</span>` : '0'}</td>
+                    <td style="text-align: center;">${(s.Low || 0) ? `<span class="bug-count-badge bug-low" style="background:rgba(16,185,129,0.2); color:#86efac;">${s.Low}</span>` : '0'}</td>
+                </tr>
+            `;
+        });
+        bugsFeatureHtml += `
+            <tr style="background: rgba(75, 85, 99, 0.3); border-top: 2px solid rgba(75, 85, 99, 0.5); font-weight: bold;">
+                <td><strong>TOTAL</strong></td>
+                <td style="text-align: center;"><strong>${bugSummary.total || 0}</strong></td>
+                <td style="text-align: center;"><strong>${(bugSummary.severity && bugSummary.severity.Critical) || 0}</strong></td>
+                <td style="text-align: center;"><strong>${(bugSummary.severity && bugSummary.severity.High) || 0}</strong></td>
+                <td style="text-align: center;"><strong>${(bugSummary.severity && bugSummary.severity.Medium) || 0}</strong></td>
+                <td style="text-align: center;"><strong>${(bugSummary.severity && bugSummary.severity.Low) || 0}</strong></td>
+            </tr>
+        `;
+        document.getElementById('bugsByFeatureBody').innerHTML = bugsFeatureHtml;
+
+        document.getElementById('timestamp').textContent =
+            `Updated: ${summary.last_updated} | Files: ${summary.files_loaded}/10 | Tests: ${summary.total_tests} | Bugs: ${bugSummary.total || 0}`;
     </script>
 </body>
 </html>
