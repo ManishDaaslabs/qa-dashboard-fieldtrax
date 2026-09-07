@@ -1,10 +1,10 @@
 """
-FieldTrax QA Dashboard - FINAL CLEAN VERSION
-Handles any filename format + multiple sheet types
+FieldTrax QA Dashboard - No Pandas Version
+Uses openpyxl only - works perfectly on Render!
 """
 
 from flask import Flask, jsonify, render_template_string
-import pandas as pd
+from openpyxl import load_workbook
 import os
 from datetime import datetime
 import json
@@ -14,7 +14,7 @@ app = Flask(__name__)
 DASHBOARD_DATA = {}
 
 def load_all_test_data():
-    """Load ALL Excel files - handle any filename and sheet format"""
+    """Load ALL Excel files using openpyxl only"""
     global DASHBOARD_DATA
     
     features = {}
@@ -33,63 +33,55 @@ def load_all_test_data():
     
     for filepath in excel_files:
         try:
-            # Step 1: Extract feature name from filename
+            # Extract feature name
             feature_name = filepath.replace('.xlsx', '').replace('.xls', '')
             
-            # Remove common test report suffixes if they exist
-            suffixes_to_remove = [
-                '_Test_execution_report',
-                '_TestExecution_Report', 
-                '_test_report',
-                '_test_execution_report'
-            ]
-            for suffix in suffixes_to_remove:
+            # Remove common suffixes
+            suffixes = ['_Test_execution_report', '_TestExecution_Report', '_test_report', '_test_execution_report']
+            for suffix in suffixes:
                 if suffix in feature_name:
                     feature_name = feature_name.replace(suffix, '')
             
-            # Create normalized version for sheet name detection
             feature_normalized = feature_name.lower().replace(' ', '').replace('_', '')
-            
-            # Convert underscores to spaces for display
             feature_display = feature_name.replace('_', ' ')
             
             print(f"\nProcessing: {feature_display}")
             
-            # Step 2: Determine which sheet to read
-            sheet_name = 0  # Default: first sheet
-            
-            # Special cases with different sheet names
+            # Determine sheet
+            sheet_name = 'Sheet'
             if 'projectgroupings' in feature_normalized:
                 sheet_name = 'Test Cases'
             elif 'readytowork' in feature_normalized:
                 sheet_name = 'test_cases'
             
-            # Step 3: Read Excel file
+            # Load workbook
             try:
-                df = pd.read_excel(filepath, sheet_name=sheet_name)
-            except Exception as e:
-                print(f"  ❌ Error reading file: {str(e)}")
+                wb = load_workbook(filepath)
+                if sheet_name in wb.sheetnames:
+                    ws = wb[sheet_name]
+                else:
+                    ws = wb.active
+            except:
+                print(f"  ❌ Error reading file")
                 continue
             
-            if df is None or len(df) == 0:
+            if not ws:
                 print(f"  → Empty file, SKIPPED")
                 continue
             
-            # Remove completely empty rows
-            df = df.dropna(how='all')
+            # Get headers
+            headers = {}
+            for col_idx, cell in enumerate(ws[1]):
+                if cell.value:
+                    headers[cell.value] = col_idx
             
-            if len(df) == 0:
-                print(f"  → No data rows, SKIPPED")
-                continue
-            
-            # Step 4: Find Status column
+            # Find status column
             status_col = None
             status_names = ['status', 'execution status', 'execution_status', 'test result', 'result']
-            
             for status_name in status_names:
-                for col in df.columns:
-                    if str(col).lower().strip() == status_name:
-                        status_col = col
+                for header, idx in headers.items():
+                    if str(header).lower().strip() == status_name:
+                        status_col = idx
                         break
                 if status_col:
                     break
@@ -98,41 +90,50 @@ def load_all_test_data():
                 print(f"  → No Status column found, SKIPPED")
                 continue
             
-            # Step 5: Extract test metrics
-            # Check if file has ID column (marks actual test cases vs sub-steps)
-            has_id_column = 'ID' in df.columns
+            # Check for ID column
+            id_col = None
+            for header, idx in headers.items():
+                if str(header).lower() in ['id', 'test id', 'tc id']:
+                    id_col = idx
+                    break
             
-            if has_id_column:
-                # Only count rows with ID (actual test cases, not sub-steps)
-                df_tests = df[df['ID'].notna()]
-                status_vals = df_tests[status_col].fillna('').astype(str).str.strip()
-            else:
-                # All rows are test cases
-                status_vals = df[status_col].fillna('').astype(str).str.strip()
+            # Count statuses
+            pass_count = 0
+            fail_count = 0
+            not_executed = 0
+            test_rows = 0
             
-            # Count status values
-            status_lower = status_vals.str.lower()
-            pass_count = sum(status_lower == 'pass')
-            fail_count = sum(status_lower == 'fail')
-            not_executed = sum(
-                (status_lower == 'no run') | 
-                (status_lower == 'not executed') |
-                (status_lower == 'not run') |
-                (status_lower == 'skipped') |
-                (status_lower == 'blocked')
-            )
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
+                # Skip empty rows
+                if not any(row):
+                    continue
+                
+                # If ID column exists, only count rows with ID
+                if id_col is not None:
+                    if row[id_col] is None:
+                        continue
+                
+                test_rows += 1
+                
+                # Get status value
+                if status_col < len(row) and row[status_col]:
+                    status = str(row[status_col]).strip().lower()
+                    if status == 'pass':
+                        pass_count += 1
+                    elif status == 'fail':
+                        fail_count += 1
+                    elif status in ['no run', 'not executed', 'not run', 'skipped', 'blocked']:
+                        not_executed += 1
             
-            # Total = Pass + Fail + Not Executed
-            total_executed = pass_count + fail_count + not_executed
-            
-            if total_executed == 0:
+            if test_rows == 0:
                 print(f"  → No test data found, SKIPPED")
                 continue
             
             # Calculate pass rate
+            total_executed = pass_count + fail_count + not_executed
             pass_rate = (pass_count / total_executed * 100) if total_executed > 0 else 0
             
-            # Determine risk level
+            # Risk level
             if pass_rate < 50:
                 risk = 'Critical'
             elif pass_rate < 75:
@@ -140,7 +141,7 @@ def load_all_test_data():
             else:
                 risk = 'Low'
             
-            # Add to features dictionary
+            # Add to features
             features[feature_display] = {
                 'total': total_executed,
                 'passed': pass_count,
@@ -150,7 +151,6 @@ def load_all_test_data():
                 'risk': risk
             }
             
-            # Add to totals
             total_pass += pass_count
             total_fail += fail_count
             total_not_executed += not_executed
@@ -163,7 +163,7 @@ def load_all_test_data():
             print(f"  ❌ Error: {str(e)}")
             continue
     
-    # Calculate overall stats
+    # Overall stats
     overall_pass_rate = (total_pass / total_tests * 100) if total_tests > 0 else 0
     
     DASHBOARD_DATA = {
@@ -294,7 +294,7 @@ HTML_TEMPLATE = '''
             `;
         });
         
-        // Add TOTAL row at bottom
+        // Add TOTAL row
         tableHtml += `
             <tr style="background: rgba(75, 85, 99, 0.3); border-top: 2px solid rgba(75, 85, 99, 0.5); font-weight: bold;">
                 <td><strong>TOTAL</strong></td>
@@ -308,7 +308,6 @@ HTML_TEMPLATE = '''
         `;
         
         document.getElementById('featuresBody').innerHTML = tableHtml;
-        
         document.getElementById('timestamp').textContent = 
             `Updated: ${summary.last_updated} | Files: ${summary.files_loaded}/10 | Tests: ${summary.total_tests}`;
     </script>
@@ -318,7 +317,7 @@ HTML_TEMPLATE = '''
 
 if __name__ == '__main__':
     print("\n" + "="*80)
-    print("🚀 FieldTrax QA Dashboard - CLEAN VERSION")
+    print("🚀 FieldTrax QA Dashboard - No Pandas Version")
     print("="*80)
     
     summary = DASHBOARD_DATA['summary']
