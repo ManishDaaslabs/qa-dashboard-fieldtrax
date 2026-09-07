@@ -305,30 +305,53 @@ HTML_TEMPLATE = '''
 <html>
 <head>
     <title>FieldTrax QA Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 10 A40 40 0 0 1 90 50 L75 50 A25 25 0 0 0 50 25 Z' fill='%2332cccd'/%3E%3Cpath d='M90 50 A40 40 0 0 1 50 90 L50 75 A25 25 0 0 0 75 50 Z' fill='%23ffe47a'/%3E%3Cpath d='M50 90 A40 40 0 0 1 10 50 L25 50 A25 25 0 0 0 50 75 Z' fill='%23ff6766'/%3E%3Cpath d='M10 50 A40 40 0 0 1 50 10 L50 25 A25 25 0 0 0 25 50 Z' fill='%23395e73'/%3E%3C/svg%3E">
     <style>
+        :root {
+            --teal: #32cccd;
+            --yellow: #ffe47a;
+            --coral: #ff6766;
+            --navy: #395e73;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto; background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%); color: #e5e7eb; min-height: 100vh; padding: 20px; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        header { margin-bottom: 40px; border-bottom: 1px solid rgba(75, 85, 99, 0.2); padding-bottom: 20px; }
-        h1 { background: linear-gradient(135deg, #60a5fa 0%, #34d399 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 32px; margin-bottom: 5px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto; background: radial-gradient(circle at 15% 0%, #12222a 0%, #05070a 45%, #050608 100%); color: #e5e7eb; min-height: 100vh; padding: 0 0 40px; }
+        .top-accent { height: 4px; width: 100%; background: linear-gradient(90deg, var(--teal), var(--yellow), var(--coral), var(--navy)); }
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+        .brand-bar { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; border-bottom: 1px solid rgba(75, 85, 99, 0.25); margin-bottom: 32px; flex-wrap: wrap; gap: 12px; }
+        .brand-left { display: flex; align-items: center; gap: 10px; }
+        .brand-left svg { display: block; }
+        .brand-name { font-size: 15px; letter-spacing: 1px; font-weight: 700; color: #f3f4f6; }
+        .brand-name span { font-weight: 400; color: #9ca3af; }
+        .brand-tag { font-size: 11px; color: #6b7280; letter-spacing: 0.5px; text-transform: uppercase; }
+        header { margin-bottom: 32px; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 6px; color: #f9fafb; letter-spacing: -0.5px; }
+        h1 .accent { background: linear-gradient(135deg, var(--teal) 0%, var(--yellow) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .subtitle { color: #9ca3af; font-size: 14px; }
         .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
-        .kpi-card { background: rgba(31, 41, 55, 0.8); border: 1px solid rgba(75, 85, 99, 0.3); border-radius: 12px; padding: 20px; }
-        .kpi-label { font-size: 12px; color: #9ca3af; text-transform: uppercase; margin-bottom: 10px; font-weight: 600; }
+        .kpi-card { background: rgba(24, 28, 36, 0.85); border: 1px solid rgba(75, 85, 99, 0.3); border-top: 3px solid var(--teal); border-radius: 12px; padding: 20px; transition: transform 0.15s ease, border-color 0.15s ease; }
+        .kpi-card:hover { transform: translateY(-2px); border-color: rgba(50, 204, 205, 0.5); }
+        .kpi-card:nth-child(2) { border-top-color: var(--yellow); }
+        .kpi-card:nth-child(3) { border-top-color: var(--coral); }
+        .kpi-label { font-size: 12px; color: #9ca3af; text-transform: uppercase; margin-bottom: 10px; font-weight: 600; letter-spacing: 0.5px; }
         .kpi-value { font-size: 28px; font-weight: 700; margin-bottom: 5px; }
         .green { color: #34d399; }
         .blue { color: #60a5fa; }
-        .section-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; margin-top: 30px; }
-        table { width: 100%; border-collapse: collapse; background: rgba(31, 41, 55, 0.8); border: 1px solid rgba(75, 85, 99, 0.3); border-radius: 12px; overflow: hidden; }
-        th { padding: 15px; text-align: left; font-weight: 600; font-size: 13px; background: rgba(55, 65, 81, 0.5); border-bottom: 1px solid rgba(75, 85, 99, 0.3); }
+        .section-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; margin-top: 34px; color: #f3f4f6; display: flex; align-items: center; gap: 8px; }
+        .section-title::before { content: ''; width: 4px; height: 20px; background: linear-gradient(180deg, var(--teal), var(--navy)); border-radius: 2px; display: inline-block; }
+        table { width: 100%; border-collapse: collapse; background: rgba(24, 28, 36, 0.85); border: 1px solid rgba(75, 85, 99, 0.3); border-radius: 12px; overflow: hidden; }
+        th { padding: 15px; text-align: left; font-weight: 600; font-size: 13px; background: rgba(55, 65, 81, 0.5); border-bottom: 1px solid rgba(75, 85, 99, 0.3); color: #d1d5db; }
         td { padding: 15px; border-bottom: 1px solid rgba(75, 85, 99, 0.1); }
-        tr:hover { background: rgba(59, 130, 246, 0.05); }
+        tr:hover { background: rgba(50, 204, 205, 0.05); }
         .risk-badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; }
         .risk-critical { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
         .risk-high { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
         .risk-low { background: rgba(16, 185, 129, 0.2); color: #86efac; }
+        .pass-rate-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        .pass-rate-bar-track { width: 90px; height: 5px; border-radius: 3px; background: rgba(75, 85, 99, 0.3); overflow: hidden; }
+        .pass-rate-bar-fill { height: 100%; border-radius: 3px; }
         .bug-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .bug-card { background: rgba(31, 41, 55, 0.8); border: 1px solid rgba(75, 85, 99, 0.3); border-radius: 12px; padding: 18px; border-left: 4px solid; }
+        .bug-card { background: rgba(24, 28, 36, 0.85); border: 1px solid rgba(75, 85, 99, 0.3); border-radius: 12px; padding: 18px; border-left: 4px solid; transition: transform 0.15s ease; }
+        .bug-card:hover { transform: translateY(-2px); }
         .bug-card-label { font-size: 12px; color: #9ca3af; text-transform: uppercase; margin-bottom: 8px; font-weight: 600; }
         .bug-card-value { font-size: 26px; font-weight: 700; }
         .bug-critical { border-left-color: #ef4444; }
@@ -340,19 +363,35 @@ HTML_TEMPLATE = '''
         .bug-low { border-left-color: #10b981; }
         .bug-low .bug-card-value { color: #86efac; }
         .bug-count-badge { display: inline-block; min-width: 28px; padding: 3px 10px; border-radius: 4px; font-size: 13px; font-weight: 600; }
-        .subsection-title { font-size: 15px; font-weight: 600; color: #9ca3af; margin: 20px 0 12px; text-transform: uppercase; }
-        .footer { text-align: right; color: #6b7280; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(75, 85, 99, 0.2); }
+        .subsection-title { font-size: 15px; font-weight: 600; color: #9ca3af; margin: 20px 0 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; color: #6b7280; font-size: 12px; margin-top: 34px; padding-top: 20px; border-top: 1px solid rgba(75, 85, 99, 0.2); }
+        .footer-brand { display: flex; align-items: center; gap: 6px; }
+        .footer-brand svg { display: block; }
     </style>
 </head>
 <body>
+    <div class="top-accent"></div>
     <div class="container">
+        <div class="brand-bar">
+            <div class="brand-left">
+                <svg viewBox="0 0 100 100" width="26" height="26">
+                    <path d="M50 10 A40 40 0 0 1 90 50 L75 50 A25 25 0 0 0 50 25 Z" fill="#32cccd"></path>
+                    <path d="M90 50 A40 40 0 0 1 50 90 L50 75 A25 25 0 0 0 75 50 Z" fill="#ffe47a"></path>
+                    <path d="M50 90 A40 40 0 0 1 10 50 L25 50 A25 25 0 0 0 50 75 Z" fill="#ff6766"></path>
+                    <path d="M10 50 A40 40 0 0 1 50 10 L50 25 A25 25 0 0 0 25 50 Z" fill="#395e73"></path>
+                </svg>
+                <span class="brand-name">DAAS <span>LABS</span></span>
+            </div>
+            <span class="brand-tag">Data &amp; AI Execution Partner</span>
+        </div>
+
         <header>
-            <h1>📊 FieldTrax QA Dashboard</h1>
+            <h1>📊 FieldTrax <span class="accent">QA Dashboard</span></h1>
             <p class="subtitle">Comprehensive Test Execution Summary - All 10 Features</p>
         </header>
-        
+
         <div class="kpi-grid" id="kpiContainer"></div>
-        
+
         <h2 class="section-title">Test Execution by Feature</h2>
         <table>
             <thead>
@@ -392,9 +431,20 @@ HTML_TEMPLATE = '''
             <tbody id="bugsByFeatureBody"></tbody>
         </table>
 
-        <div class="footer" id="timestamp"></div>
+        <div class="footer">
+            <div class="footer-brand">
+                <svg viewBox="0 0 100 100" width="14" height="14">
+                    <path d="M50 10 A40 40 0 0 1 90 50 L75 50 A25 25 0 0 0 50 25 Z" fill="#32cccd"></path>
+                    <path d="M90 50 A40 40 0 0 1 50 90 L50 75 A25 25 0 0 0 75 50 Z" fill="#ffe47a"></path>
+                    <path d="M50 90 A40 40 0 0 1 10 50 L25 50 A25 25 0 0 0 50 75 Z" fill="#ff6766"></path>
+                    <path d="M10 50 A40 40 0 0 1 50 10 L50 25 A25 25 0 0 0 25 50 Z" fill="#395e73"></path>
+                </svg>
+                <span>Powered by DaaS Labs</span>
+            </div>
+            <div id="timestamp"></div>
+        </div>
     </div>
-    
+
     <script>
         const data = {{ data | safe }};
         const summary = data.summary;
@@ -414,6 +464,8 @@ HTML_TEMPLATE = '''
             </div>
         `;
         
+        const barColor = rate => rate >= 75 ? '#34d399' : rate >= 50 ? '#fbbf24' : '#f87171';
+
         let tableHtml = '';
         Object.entries(data.features).forEach(([name, stats]) => {
             const riskClass = stats.risk === 'Critical' ? 'risk-critical' : stats.risk === 'High' ? 'risk-high' : 'risk-low';
@@ -424,7 +476,12 @@ HTML_TEMPLATE = '''
                     <td style="text-align: center; color: #34d399;">${stats.passed}</td>
                     <td style="text-align: center; color: #f87171;">${stats.failed}</td>
                     <td style="text-align: center; color: #9ca3af;">${stats.not_executed || 0}</td>
-                    <td style="text-align: center;"><strong>${stats.pass_rate}%</strong></td>
+                    <td style="text-align: center;">
+                        <div class="pass-rate-cell">
+                            <strong>${stats.pass_rate}%</strong>
+                            <div class="pass-rate-bar-track"><div class="pass-rate-bar-fill" style="width:${stats.pass_rate}%; background:${barColor(stats.pass_rate)};"></div></div>
+                        </div>
+                    </td>
                     <td style="text-align: center;">
                         <span class="risk-badge ${riskClass}">${stats.risk}</span>
                     </td>
